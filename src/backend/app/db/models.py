@@ -224,37 +224,22 @@ class DbUser(BaseModel):
     @classmethod
     async def delete(cls, db: Connection, user_id: int) -> bool:
         """Delete a user and their related data."""
+        sql = """
+            WITH updated_task_events AS (
+                UPDATE task_events SET user_id = NULL WHERE user_id = %(user_id)s
+            ), updated_projects AS (
+                UPDATE projects SET author_id = NULL WHERE author_id = %(user_id)s
+            ), deleted_organisation_managers AS (
+                DELETE FROM organisation_managers WHERE user_id = %(user_id)s
+            ), deleted_user_roles AS (
+                DELETE FROM user_roles WHERE user_id = %(user_id)s
+            ), deleted_users AS (
+                DELETE FROM users WHERE id = %(user_id)s
+            )
+            SELECT 1;
+        """
         async with db.cursor() as cur:
-            await cur.execute(
-                """
-                UPDATE task_events SET user_id = NULL WHERE user_id = %(user_id)s;
-            """,
-                {"user_id": user_id},
-            )
-            await cur.execute(
-                """
-                UPDATE projects SET author_id = NULL WHERE author_id = %(user_id)s;
-            """,
-                {"user_id": user_id},
-            )
-            await cur.execute(
-                """
-                DELETE FROM organisation_managers WHERE user_id = %(user_id)s;
-            """,
-                {"user_id": user_id},
-            )
-            await cur.execute(
-                """
-                DELETE FROM user_roles WHERE user_id = %(user_id)s;
-            """,
-                {"user_id": user_id},
-            )
-            await cur.execute(
-                """
-                DELETE FROM users WHERE id = %(user_id)s;
-            """,
-                {"user_id": user_id},
-            )
+            await cur.execute(sql, {"user_id": user_id})
 
     @classmethod
     async def create(
@@ -396,6 +381,8 @@ class DbOrganisation(BaseModel):
         """Create a new organisation."""
         # Set requesting user to the org owner
         org_in.created_by = user_id
+        print("org_in.__dict__")
+        print(org_in.__dict__)
 
         if not ignore_conflict and cls.one(db, org_in.name):
             msg = f"Organisation named ({org_in.name}) already exists!"
